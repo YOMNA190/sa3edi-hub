@@ -107,6 +107,9 @@ model Profile {
   
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  @@index([isOpenToWork, specializationId])
+  @@index([availability])
 }
 
 model Skill {
@@ -225,6 +228,12 @@ model Opportunity {
   
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  @@index([status, specializationId])
+  @@index([deadline])
+  @@index([createdAt])
+  @@index([deletedAt])
 }
 
 enum OpportunityType {

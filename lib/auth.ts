@@ -6,7 +6,11 @@ import { prisma } from "./prisma"
 
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { 
+    strategy: "database",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 24 hours
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/error",
@@ -28,42 +32,69 @@ export const authConfig: NextAuthConfig = {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: false,
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id
-        session.user.role = (user as any).role
-        session.user.status = (user as any).status
-      }
-      return session
-    },
     async signIn({ user }) {
+      if (user.email?.endsWith("@tempmail.com")) {
+        return false
+      }
+      
       if (user.email === process.env.SUPER_ADMIN_EMAIL) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { role: "SUPER_ADMIN", status: "ACTIVE" }
+        await prisma.user.upsert({
+          where: { email: user.email },
+          update: { role: "SUPER_ADMIN", status: "ACTIVE" },
+          create: { 
+            email: user.email, 
+            role: "SUPER_ADMIN", 
+            status: "ACTIVE",
+            name: user.name 
+          }
         })
       }
       return true
+    },
+    async session({ session, user }) {
+      if (session.user) {
+        const freshUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { role: true, status: true, id: true }
+        })
+        
+        if (freshUser) {
+          session.user.id = freshUser.id
+          session.user.role = freshUser.role
+          session.user.status = freshUser.status
+        }
+      }
+      return session
     }
   },
   events: {
-    async createUser({ user }) {
-      await prisma.auditLog.create({
-        data: {
-          action: "USER_REGISTERED",
-          entityType: "User",
-          entityId: user.id!,
-          metadata: { email: user.email }
-        }
-      })
+    async signIn({ user, isNewUser }) {
+      if (isNewUser) {
+        await prisma.auditLog.create({
+          data: {
+            action: "USER_REGISTERED",
+            entityType: "User",
+            entityId: user.id!,
+            metadata: { provider: user.email ? "email" : "oauth" }
+          }
+        })
+      } else {
+        await prisma.auditLog.create({
+          data: {
+            action: "USER_LOGIN",
+            entityType: "User",
+            entityId: user.id!
+          }
+        })
+      }
     }
   }
 }
 
-// Helper functions
 export const requireRole = (allowedRoles: string[]) => {
   return async (userId: string) => {
     const user = await prisma.user.findUnique({
