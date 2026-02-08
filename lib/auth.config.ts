@@ -1,26 +1,7 @@
 import type { NextAuthConfig } from "next-auth"
-import Google from "next-auth/providers/google"
-import Email from "next-auth/providers/email"
 
 export const authConfig = {
-  providers: [
-    Email({
-      server: {
-        host: process.env.EMAIL_SERVER_HOST,
-        port: Number(process.env.EMAIL_SERVER_PORT),
-        auth: {
-          user: process.env.EMAIL_SERVER_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD,
-        },
-      },
-      from: process.env.EMAIL_FROM,
-    }),
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: false,
-    }),
-  ],
+  providers: [], // Providers will be added in auth.ts
   pages: {
     signIn: "/auth/signin",
     error: "/auth/error",
