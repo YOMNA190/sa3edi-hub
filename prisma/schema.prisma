@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  role           UserRole  @default(MEMBER)
+  status         UserStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String?
+  approvedAt     DateTime?
+  
+  accounts       Account[]
+  sessions       Session[]
+  profile        Profile?
+  applications   OpportunityApplication[]
+  auditLogs      AuditLog[]
+  submittedOpportunities Opportunity[] @relation("SubmittedBy")
+  reviewedOpportunities  Opportunity[] @relation("ReviewedBy")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  MEMBER
+  COMPANY
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+model Profile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  specializationId  String
+  specialization    Specialization @relation(fields: [specializationId], references: [id])
+  
+  skills            Skill[]
+  projects          Project[]
+  
+  githubUrl         String?
+  portfolioUrl      String?
+  linkedinUrl       String?
+  resumeUrl         String?
+  
+  availability      Availability @default(REMOTE)
+  isOpenToWork      Boolean   @default(true)
+  
+  isVerified        Boolean   @default(false)
+  verifiedAt        DateTime?
+  verifiedBy        String?
+  
+  bio               String?   @db.Text
+  yearsExperience   Int?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Skill {
+  id            String    @id @default(cuid())
+  name          String
+  profileId     String
+  profile       Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  proficiency   Proficiency @default(INTERMEDIATE)
+}
+
+enum Proficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model Project {
+  id            String    @id @default(cuid())
+  profileId     String
+  profile       Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  title         String
+  description   String    @db.Text
+  url           String?
+  imageUrl      String?
+  outcome       String
+  createdAt     DateTime  @default(now())
+}
+
+enum Availability {
+  REMOTE
+  FREELANCE
+  FULL_TIME
+  PART_TIME
+  NOT_AVAILABLE
+}
+
+model Specialization {
+  id            String    @id @default(cuid())
+  slug          String    @unique
+  name          String
+  description   String    @db.Text
+  color         String
+  
+  learningPaths LearningPath[]
+  profiles      Profile[]
+  opportunities Opportunity[]
+  
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+model LearningPath {
+  id                String    @id @default(cuid())
+  specializationId  String
+  specialization    Specialization @relation(fields: [specializationId], references: [id], onDelete: Cascade)
+  
+  title             String
+  description       String    @db.Text
+  order             Int
+  
+  requiredProjects  Int       @default(0)
+  requiredCases     Int       @default(0)
+  
+  resources         Resource[]
+}
+
+model Resource {
+  id              String    @id @default(cuid())
+  learningPathId  String
+  learningPath    LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  
+  title           String
+  url             String
+  type            ResourceType
+  isRequired      Boolean   @default(false)
+}
+
+enum ResourceType {
+  COURSE
+  ARTICLE
+  VIDEO
+  DOCUMENTATION
+  TOOL
+}
+
+model Opportunity {
+  id                String    @id @default(cuid())
+  
+  type              OpportunityType
+  specializationId  String
+  specialization    Specialization @relation(fields: [specializationId], references: [id])
+  
+  title             String
+  organization      String
+  description       String    @db.Text
+  requirements      String    @db.Text
+  
+  level             ExperienceLevel
+  duration          String?
+  outcome           String
+  deadline          DateTime?
+  
+  applicationUrl    String?
+  
+  status            ContentStatus @default(PENDING)
+  submittedById     String
+  submittedBy       User      @relation("SubmittedBy", fields: [submittedById], references: [id])
+  reviewedById      String?
+  reviewedBy        User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime?
+  rejectionReason   String?
+  
+  applications      OpportunityApplication[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+enum OpportunityType {
+  COURSE
+  INTERNSHIP
+  TRAINING
+  BOOTCAMP
+  ENTRY_JOB
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  ANY
+}
+
+enum ContentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+model OpportunityApplication {
+  id              String    @id @default(cuid())
+  opportunityId   String
+  opportunity     Opportunity @relation(fields: [opportunityId], references: [id])
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  
+  status          ApplicationStatus @default(PENDING)
+  appliedAt       DateTime  @default(now())
+  notes           String?
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model CompanyRequest {
+  id            String    @id @default(cuid())
+  companyName   String
+  contactName   String
+  email         String
+  phone         String?
+  
+  specializationId String?
+  requirements     String    @db.Text
+  urgency          Urgency   @default(NORMAL)
+  
+  status          RequestStatus @default(NEW)
+  handledById     String?
+  notes           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RequestStatus {
+  NEW
+  IN_REVIEW
+  MATCHING
+  FULFILLED
+  CLOSED
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime  @default(now())
+}
