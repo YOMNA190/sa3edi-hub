@@ -1,47 +1,29 @@
-import { NextAuthConfig } from "next-auth"
+import NextAuth from "next-auth"
 import { PrismaAdapter } from "@auth/prisma-adapter"
-import Google from "next-auth/providers/google"
-import Email from "next-auth/providers/email"
 import { prisma } from "./prisma"
+import { authConfig } from "./auth.config"
 
-export const authConfig: NextAuthConfig = {
-  adapter: PrismaAdapter(prisma),
+export const { 
+  handlers: { GET, POST }, 
+  auth, 
+  signIn, 
+  signOut 
+} = NextAuth({
+  ...authConfig,
+  adapter: PrismaAdapter(prisma) as any,
   session: { 
     strategy: "database",
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // 24 hours
   },
-  pages: {
-    signIn: "/auth/signin",
-    error: "/auth/error",
-    verifyRequest: "/auth/verify-request",
-    newUser: "/auth/new-user",
-  },
-  providers: [
-    Email({
-      server: {
-        host: process.env.EMAIL_SERVER_HOST,
-        port: Number(process.env.EMAIL_SERVER_PORT),
-        auth: {
-          user: process.env.EMAIL_SERVER_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD,
-        },
-      },
-      from: process.env.EMAIL_FROM,
-    }),
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: false,
-    }),
-  ],
   callbacks: {
+    ...authConfig.callbacks,
     async signIn({ user }) {
       if (user.email?.endsWith("@tempmail.com")) {
         return false
       }
       
-      if (user.email === process.env.SUPER_ADMIN_EMAIL) {
+      if (user.email === process.env.SUPER_ADMIN_EMAIL && user.email) {
         await prisma.user.upsert({
           where: { email: user.email },
           update: { role: "SUPER_ADMIN", status: "ACTIVE" },
@@ -56,7 +38,7 @@ export const authConfig: NextAuthConfig = {
       return true
     },
     async session({ session, user }) {
-      if (session.user) {
+      if (session.user && user) {
         const freshUser = await prisma.user.findUnique({
           where: { id: user.id },
           select: { role: true, status: true, id: true }
@@ -64,8 +46,8 @@ export const authConfig: NextAuthConfig = {
         
         if (freshUser) {
           session.user.id = freshUser.id
-          session.user.role = freshUser.role
-          session.user.status = freshUser.status
+          session.user.role = freshUser.role as any
+          session.user.status = freshUser.status as any
         }
       }
       return session
@@ -93,7 +75,7 @@ export const authConfig: NextAuthConfig = {
       }
     }
   }
-}
+})
 
 export const requireRole = (allowedRoles: string[]) => {
   return async (userId: string) => {
